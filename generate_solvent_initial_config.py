@@ -13,10 +13,19 @@ from typing import List, Tuple
 ANGSTROM_TO_M = 1e-10
 AMU_TO_KG = 1.66053906660e-27
 KB = 1.380649e-23
+AVOGADRO = 6.02214076e23
+J_TO_KCAL = 1.0 / 4184.0
+COULOMB_KCAL_MOL_ANG_E2 = 332.063713299
+
+SIGMA = {"C1": 3.774, "C2": 3.481}
+EPSILON = {"C1": 0.238, "C2": 0.415}
+CHARGE = {"C1": +0.25, "C2": -0.25}
 
 
 @dataclass
 class Site:
+    molecule_id: int
+    site_type: str
     label: str
     mass_amu: float
     position_angstrom: Tuple[float, float, float]
@@ -84,6 +93,54 @@ def instantaneous_temperature(sites: List[Site], remove_momentum_dof: bool = Tru
     return (2.0 * kinetic_energy) / (dof * KB)
 
 
+def kinetic_energy_kcal_mol(sites: List[Site]) -> float:
+    kinetic_energy_joule = 0.0
+    for site in sites:
+        mass_kg = site.mass_amu * AMU_TO_KG
+        vx, vy, vz = site.velocity_m_s
+        kinetic_energy_joule += 0.5 * mass_kg * (vx * vx + vy * vy + vz * vz)
+    return kinetic_energy_joule * AVOGADRO * J_TO_KCAL
+
+
+def potential_energy_kcal_mol(sites: List[Site]) -> float:
+    potential = 0.0
+    for i in range(len(sites)):
+        site_i = sites[i]
+        xi, yi, zi = site_i.position_angstrom
+        for j in range(i + 1, len(sites)):
+            site_j = sites[j]
+
+            # No intramolecular interactions (same solvent molecule)
+            if site_i.molecule_id == site_j.molecule_id:
+                continue
+
+            xj, yj, zj = site_j.position_angstrom
+            rij = math.sqrt((xi - xj) ** 2 + (yi - yj) ** 2 + (zi - zj) ** 2)
+
+            sigma_ij = 0.5 * (SIGMA[site_i.site_type] + SIGMA[site_j.site_type])
+            # Implemented exactly as requested in prompt.
+            epsilon_ij = math.sqrt(SIGMA[site_i.site_type] * SIGMA[site_j.site_type])
+
+            sr = sigma_ij / rij
+            sr6 = sr**6
+            sr12 = sr6**2
+            lj = 4.0 * epsilon_ij * (sr12 - sr6)
+
+            qi = CHARGE[site_i.site_type]
+            qj = CHARGE[site_j.site_type]
+            coulomb = COULOMB_KCAL_MOL_ANG_E2 * (qi * qj) / rij
+
+            potential += lj + coulomb
+
+    return potential
+
+
+def total_energy_kcal_mol(sites: List[Site]) -> Tuple[float, float, float]:
+    kinetic = kinetic_energy_kcal_mol(sites)
+    potential = potential_energy_kcal_mol(sites)
+    return kinetic, potential, kinetic + potential
+
+
 def generate_configuration(
     n_molecules: int,
     temperature_k: float,
@@ -124,6 +181,8 @@ def generate_configuration(
             ):
                 sites.append(
                     Site(
+                        molecule_id=mol_idx,
+                        site_type="C1",
                         label="C",
                         mass_amu=c1_mass,
                         position_angstrom=c1_pos,
@@ -132,6 +191,8 @@ def generate_configuration(
                 )
                 sites.append(
                     Site(
+                        molecule_id=mol_idx,
+                        site_type="C2",
                         label="Cl",
                         mass_amu=c2_mass,
                         position_angstrom=c2_pos,
@@ -164,7 +225,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--n-molecules", type=int, default=7)
     parser.add_argument("--temperature", type=float, default=50.0, help="Kelvin")
-    parser.add_argument("--radius", type=float, default=15.0, help="Angstrom")
+    parser.add_argument("--radius", type=float, default=7.0, help="Angstrom")
     parser.add_argument("--bond-distance", type=float, default=1.7, help="Angstrom")
     parser.add_argument("--min-distance", type=float, default=3.0, help="Angstrom")
     parser.add_argument("--seed", type=int, default=20260218)
@@ -185,15 +246,20 @@ def main() -> None:
     )
 
     temp = instantaneous_temperature(sites)
+    kinetic, potential, total = total_energy_kcal_mol(sites)
     comment = (
         f"chloromethane coarse-grained initial frame | molecules={args.n_molecules} "
-        f"T_target={args.temperature:.2f}K T_inst={temp:.2f}K seed={args.seed}"
+        f"T_target={args.temperature:.2f}K T_inst={temp:.2f}K seed={args.seed} "
+        f"E_tot={total:.3f}kcal/mol"
     )
 
     write_xyz(args.output, sites, comment)
 
     print(f"Wrote {len(sites)} sites ({args.n_molecules} molecules) to {args.output}")
     print(f"Instantaneous temperature after momentum removal: {temp:.3f} K")
+    print(f"Kinetic energy: {kinetic:.6f} kcal/mol")
+    print(f"Potential energy: {potential:.6f} kcal/mol")
+    print(f"Total energy: {total:.6f} kcal/mol")
 
 
 if __name__ == "__main__":
