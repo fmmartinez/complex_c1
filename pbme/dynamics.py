@@ -7,7 +7,7 @@ from typing import Dict, List, Tuple
 
 from .diabatic import interpolate_eigenstates, interpolate_h_diabatic, load_diabatic_tables
 from .io_utils import append_xyz_frame
-from .mapping import compute_mapping_derivatives, sample_focused_mapping_variables
+from .mapping import propagate_mapping_exact_half_step, sample_focused_mapping_variables
 from .model import (
     CHARGE,
     HBAR_MAPPING,
@@ -602,7 +602,7 @@ def run_nve_md(
 
     try:
         forces, terms = compute_pbme_forces_and_hamiltonian(sites, n_solvent_molecules, diabatic_table, map_r, map_p)
-    except RuntimeError as exc:
+    except (RuntimeError, ValueError) as exc:
         with energy_log_path.open("a", encoding="utf-8") as flog:
             flog.write(f"# terminated at step 0: {exc}\n")
         return
@@ -629,10 +629,7 @@ def run_nve_md(
             site.velocity_ang_fs[1] += 0.5 * dt_fs * ay
             site.velocity_ang_fs[2] += 0.5 * dt_fs * az
 
-        dmap_r, dmap_p = compute_mapping_derivatives(terms["h_eff"], map_r, map_p)
-        for i in range(3):
-            map_r[i] += 0.5 * dt_fs * dmap_r[i]
-            map_p[i] += 0.5 * dt_fs * dmap_p[i]
+        propagate_mapping_exact_half_step(map_r, map_p, terms["h_eff"], 0.5 * dt_fs)
 
         for site in sites:
             if site.site_type == "H":
@@ -645,15 +642,12 @@ def run_nve_md(
 
         try:
             new_forces, new_terms = compute_pbme_forces_and_hamiltonian(sites, n_solvent_molecules, diabatic_table, map_r, map_p)
-        except RuntimeError as exc:
+        except (RuntimeError, ValueError) as exc:
             with energy_log_path.open("a", encoding="utf-8") as flog:
                 flog.write(f"# terminated at step {step + 1}: {exc}\n")
             break
 
-        dmap_r, dmap_p = compute_mapping_derivatives(new_terms["h_eff"], map_r, map_p)
-        for i in range(3):
-            map_r[i] += 0.5 * dt_fs * dmap_r[i]
-            map_p[i] += 0.5 * dt_fs * dmap_p[i]
+        propagate_mapping_exact_half_step(map_r, map_p, new_terms["h_eff"], 0.5 * dt_fs)
 
         for idx, site in enumerate(sites):
             if site.site_type == "H":
