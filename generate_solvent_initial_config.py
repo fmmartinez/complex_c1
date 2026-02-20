@@ -1087,7 +1087,16 @@ def run_nve_md(
             site.position_angstrom[1] += dt_fs * site.velocity_ang_fs[1]
             site.position_angstrom[2] += dt_fs * site.velocity_ang_fs[2]
 
-        enforce_solvent_bond_constraints(sites, n_solvent_molecules, solvent_bond_distance)
+    trajectory_path.write_text("", encoding="utf-8")
+    energy_log_path.write_text(
+        "step time_fs R_AB K_kcal_mol V_SS_kcal_mol E_map_coupling_kcal_mol H_map_kcal_mol dE_dRAB_kcal_mol_A "
+        "R1 P1 R2 P2 R3 P3 fd_count fd_delta_A fd_max_abs_err fd_max_rel_err fd_mean_abs_err\n",
+        encoding="utf-8",
+    )
+    h_matrix_log_path.write_text(
+        "step time_fs R_AB h11 h12 h13 h21 h22 h23 h31 h32 h33\n",
+        encoding="utf-8",
+    )
 
         try:
             new_forces, new_terms = compute_pbme_forces_and_hamiltonian(
@@ -1114,7 +1123,14 @@ def run_nve_md(
             site.velocity_ang_fs[1] += 0.5 * dt_fs * ay
             site.velocity_ang_fs[2] += 0.5 * dt_fs * az
 
-        enforce_solvent_velocity_constraints(sites, n_solvent_molecules)
+    with h_matrix_log_path.open("a", encoding="utf-8") as fh:
+        h_eff = terms["h_eff"]
+        fh.write(
+            f"0 0.000000 {terms['R_AB']:.8f} "
+            f"{h_eff[0][0]:.10f} {h_eff[0][1]:.10f} {h_eff[0][2]:.10f} "
+            f"{h_eff[1][0]:.10f} {h_eff[1][1]:.10f} {h_eff[1][2]:.10f} "
+            f"{h_eff[2][0]:.10f} {h_eff[2][1]:.10f} {h_eff[2][2]:.10f}\n"
+        )
 
         terms = new_terms
         forces = new_forces
