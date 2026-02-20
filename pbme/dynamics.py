@@ -540,6 +540,7 @@ def run_nve_md(
     occupied_state: int,
     mapping_seed: int,
     h_matrix_log_path: Path,
+    mapping_log_path: Path,
 ) -> None:
     diabatic_table = load_diabatic_tables(diabatic_path)
     mapping_rng = random.Random(mapping_seed)
@@ -548,11 +549,15 @@ def run_nve_md(
     trajectory_path.write_text("", encoding="utf-8")
     energy_log_path.write_text(
         "step time_fs R_AB K_kcal_mol V_SS_kcal_mol E_map_coupling_kcal_mol H_map_kcal_mol dE_dRAB_kcal_mol_A "
-        "M1 M2 M3 R1 P1 R2 P2 R3 P3 fd_count fd_delta_A fd_max_abs_err fd_max_rel_err fd_mean_abs_err\n",
+        "fd_count fd_delta_A fd_max_abs_err fd_max_rel_err fd_mean_abs_err\n",
         encoding="utf-8",
     )
     h_matrix_log_path.write_text(
         "step time_fs R_AB h11 h12 h13 h21 h22 h23 h31 h32 h33\n",
+        encoding="utf-8",
+    )
+    mapping_log_path.write_text(
+        "step time_fs M1 M2 M3 R1 P1 R2 P2 R3 P3\n",
         encoding="utf-8",
     )
 
@@ -562,10 +567,14 @@ def run_nve_md(
             flog.write(
                 f"{step} {step * dt_fs:.6f} {float(terms['R_AB']):.8f} {float(terms['K']):.10f} {float(terms['V_SS']):.10f} "
                 f"{float(terms['E_map_coupling']):.10f} {float(terms['H_map']):.10f} {float(terms['dE_dRAB']):.10f} "
-                f"{m_norms[0]:.10f} {m_norms[1]:.10f} {m_norms[2]:.10f} "
-                f"{map_r[0]:.10f} {map_p[0]:.10f} {map_r[1]:.10f} {map_p[1]:.10f} {map_r[2]:.10f} {map_p[2]:.10f} "
                 f"{fd_summary['fd_count']:.0f} {fd_summary['fd_delta']:.6f} {fd_summary['fd_max_abs_err']:.10e} "
                 f"{fd_summary['fd_max_rel_err']:.10e} {fd_summary['fd_mean_abs_err']:.10e}\n"
+            )
+
+        with mapping_log_path.open("a", encoding="utf-8") as fm:
+            fm.write(
+                f"{step} {step * dt_fs:.6f} {m_norms[0]:.10f} {m_norms[1]:.10f} {m_norms[2]:.10f} "
+                f"{map_r[0]:.10f} {map_p[0]:.10f} {map_r[1]:.10f} {map_p[1]:.10f} {map_r[2]:.10f} {map_p[2]:.10f}\n"
             )
 
         with h_matrix_log_path.open("a", encoding="utf-8") as fh:

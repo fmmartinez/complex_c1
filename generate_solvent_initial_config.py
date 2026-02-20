@@ -26,10 +26,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--dt-fs", type=float, default=0.1)
     parser.add_argument("--write-frequency", type=int, default=10)
 
-    parser.add_argument("--initial-output", type=Path, default=Path("solvent_initial.xyz"))
-    parser.add_argument("--trajectory", type=Path, default=Path("solvent_nve.xyz"))
-    parser.add_argument("--energy-log", type=Path, default=Path("solvent_energy.log"))
-    parser.add_argument("--h-matrix-log", type=Path, default=Path("effective_hamiltonian.log"))
+    parser.add_argument("--initial-output", type=Path, default=Path("pbme_initial.xyz"))
+    parser.add_argument("--trajectory", type=Path, default=Path("pbme_trajectory.xyz"))
+    parser.add_argument("--energy-log", type=Path, default=Path("pbme_energy.log"))
+    parser.add_argument("--h-matrix-log", type=Path, default=Path("pbme_effective_hamiltonian.log"))
+    parser.add_argument("--mapping-log", type=Path, default=Path("pbme_mapping.log"))
     parser.add_argument("--diabatic-json", type=Path, default=Path("diabatic_matrices.json"))
     parser.add_argument("--validate-forces", action="store_true", help="Run finite-difference force spot checks")
     parser.add_argument("--fd-delta", type=float, default=1e-4, help="Finite-difference displacement in Angstrom")
@@ -91,6 +92,7 @@ def main() -> None:
         occupied_state=args.occupied_state - 1,
         mapping_seed=mapping_seed,
         h_matrix_log_path=args.h_matrix_log,
+        mapping_log_path=args.mapping_log,
     )
 
     print(f"Initial temperature: {initial_temp:.3f} K")
@@ -105,6 +107,7 @@ def main() -> None:
     print(f"Trajectory written to: {args.trajectory}")
     print(f"Energy log written to: {args.energy_log}")
     print(f"Effective Hamiltonian log written to: {args.h_matrix_log}")
+    print(f"Mapping variables log written to: {args.mapping_log}")
 
 
 if __name__ == "__main__":
