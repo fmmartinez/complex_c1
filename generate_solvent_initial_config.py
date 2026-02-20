@@ -72,7 +72,6 @@ RAB_MAX = 2.75
 PROTON_GRID_MIN = 0.3
 PROTON_GRID_MAX = 2.4
 PROTON_GRID_STEP = 0.02
-DEFAULT_MAP_VALUE = 0.1
 
 
 @dataclass
@@ -608,6 +607,35 @@ def compute_pbme_forces_and_hamiltonian(
     }
 
 
+def sample_focused_mapping_variables(
+    n_states: int,
+    occupied_state: int,
+    rng: random.Random,
+) -> Tuple[List[float], List[float]]:
+    if not (0 <= occupied_state < n_states):
+        raise ValueError(f"occupied_state must be in [0, {n_states - 1}], got {occupied_state}.")
+
+    std = math.sqrt(0.5)
+    map_r = []
+    map_p = []
+    for _ in range(n_states):
+        map_r.append(rng.gauss(0.0, std))
+        map_p.append(rng.gauss(0.0, std))
+
+    for i in range(n_states):
+        target = 3.0 if i == occupied_state else 1.0
+        radius = math.sqrt(map_r[i] * map_r[i] + map_p[i] * map_p[i])
+        if radius < 1e-14:
+            map_r[i] = math.sqrt(target)
+            map_p[i] = 0.0
+            continue
+        scale = math.sqrt(target) / radius
+        map_r[i] *= scale
+        map_p[i] *= scale
+
+    return map_r, map_p
+
+
 def clone_sites(sites: List[Site]) -> List[Site]:
     return [
         Site(
@@ -930,16 +958,22 @@ def run_nve_md(
     diabatic_path: Path,
     validate_forces: bool,
     fd_delta: float,
+    occupied_state: int,
+    mapping_seed: int,
 ) -> None:
     del steps, dt_fs, write_frequency, solvent_bond_distance
     diabatic_table = load_diabatic_tables(diabatic_path)
-    map_r = [DEFAULT_MAP_VALUE, DEFAULT_MAP_VALUE, DEFAULT_MAP_VALUE]
-    map_p = [DEFAULT_MAP_VALUE, DEFAULT_MAP_VALUE, DEFAULT_MAP_VALUE]
+    mapping_rng = random.Random(mapping_seed)
+    map_r, map_p = sample_focused_mapping_variables(
+        n_states=3,
+        occupied_state=occupied_state,
+        rng=mapping_rng,
+    )
 
     trajectory_path.write_text("", encoding="utf-8")
     energy_log_path.write_text(
         "step time_fs R_AB K_kcal_mol V_SS_kcal_mol E_map_coupling_kcal_mol H_map_kcal_mol dE_dRAB_kcal_mol_A "
-        "fd_count fd_delta_A fd_max_abs_err fd_max_rel_err fd_mean_abs_err\n",
+        "R1 P1 R2 P2 R3 P3 fd_count fd_delta_A fd_max_abs_err fd_max_rel_err fd_mean_abs_err\n",
         encoding="utf-8",
     )
 
@@ -967,6 +1001,7 @@ def run_nve_md(
         flog.write(
             f"0 0.000000 {terms['R_AB']:.8f} {terms['K']:.10f} {terms['V_SS']:.10f} "
             f"{terms['E_map_coupling']:.10f} {terms['H_map']:.10f} {terms['dE_dRAB']:.10f} "
+            f"{map_r[0]:.10f} {map_p[0]:.10f} {map_r[1]:.10f} {map_p[1]:.10f} {map_r[2]:.10f} {map_p[2]:.10f} "
             f"{fd_summary['fd_count']:.0f} {fd_summary['fd_delta']:.6f} {fd_summary['fd_max_abs_err']:.10e} "
             f"{fd_summary['fd_max_rel_err']:.10e} {fd_summary['fd_mean_abs_err']:.10e}\n"
         )
@@ -980,7 +1015,7 @@ def run_nve_md(
             f"R_AB={terms['R_AB']:.6f} H_map={terms['H_map']:.6f} "
             f"K={terms['K']:.6f} V_SS={terms['V_SS']:.6f} E_map={terms['E_map_coupling']:.6f} "
             f"T_noH={temperature:.3f} max|F|={max_force:.6f} "
-            f"FDmaxAbs={fd_summary['fd_max_abs_err']:.3e}"
+            f"occ={occupied_state + 1} FDmaxAbs={fd_summary['fd_max_abs_err']:.3e}"
         ),
     )
 
@@ -1006,6 +1041,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--diabatic-json", type=Path, default=Path("diabatic_matrices.json"))
     parser.add_argument("--validate-forces", action="store_true", help="Run finite-difference force spot checks")
     parser.add_argument("--fd-delta", type=float, default=1e-4, help="Finite-difference displacement in Angstrom")
+    parser.add_argument(
+        "--occupied-state",
+        type=int,
+        default=1,
+        help="Initially occupied mapping state index (1-based)",
+    )
+    parser.add_argument(
+        "--mapping-seed",
+        type=int,
+        default=None,
+        help="Seed for mapping-variable sampling (defaults to --seed)",
+    )
     return parser.parse_args()
 
 
@@ -1033,6 +1080,10 @@ def main() -> None:
         ),
     )
 
+    if not 1 <= args.occupied_state <= 3:
+        raise ValueError("--occupied-state must be 1, 2, or 3.")
+    mapping_seed = args.seed if args.mapping_seed is None else args.mapping_seed
+
     run_nve_md(
         sites=sites,
         n_solvent_molecules=args.n_molecules,
@@ -1045,12 +1096,18 @@ def main() -> None:
         diabatic_path=args.diabatic_json,
         validate_forces=args.validate_forces,
         fd_delta=args.fd_delta,
+        occupied_state=args.occupied_state - 1,
+        mapping_seed=mapping_seed,
     )
 
     print(f"Initial temperature: {initial_temp:.3f} K")
     print("Dynamics is disabled in this PBME verification mode (step=0 only).")
     if args.validate_forces:
         print(f"Finite-difference force checks enabled (delta={args.fd_delta:.2e} A).")
+    print(
+        f"Mapping variables sampled from N(0,1/2) with focused rescaling; "
+        f"occupied state={args.occupied_state}, mapping_seed={mapping_seed}."
+    )
     print(f"Initial frame written to: {args.initial_output}")
     print(f"Trajectory written to: {args.trajectory}")
     print(f"Energy log written to: {args.energy_log}")
