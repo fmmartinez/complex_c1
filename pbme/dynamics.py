@@ -108,9 +108,6 @@ def _get_lj_sigma_epsilon_numba(type_i: int, type_j: int) -> Tuple[float, float,
     if (a == 0 or a == 1) and (b == 2 or b == 3):
         return 1.0, 3.5, 0.3974
 
-    if a == 4 and (b == 0 or b == 1):
-        return 1.0, 3.5, 0.3974
-
     return 0.0, 0.0, 0.0
 
 
@@ -235,11 +232,6 @@ def _compute_forces_numba_core(
             r_hs = math.sqrt(dx * dx + dy * dy + dz * dz)
             e_hs = 0.0
             dUdr_hs = 0.0
-            has_lj_hs, sigma_hs, epsilon_hs = _get_lj_sigma_epsilon_numba(4, type_codes[s_idx])
-            if has_lj_hs > 0.5:
-                e_lj, d_lj = _lj_energy_dudr_numba(r_hs, sigma_hs, epsilon_hs)
-                e_hs += e_lj
-                dUdr_hs += d_lj
             if abs(q_h * qs) > 0.0:
                 e_c, d_c = _coulomb_energy_dudr_numba(r_hs, q_h, qs)
                 e_hs += e_c
@@ -511,11 +503,6 @@ def compute_pbme_forces_and_hamiltonian(
             r_hs = math.sqrt(dx * dx + dy * dy + dz * dz)
             e_hs = 0.0
             dUdr_hs = 0.0
-            lj_hs = get_lj_params("H", ss.site_type)
-            if lj_hs is not None:
-                e_lj, d_lj = lj_energy_dudr(r_hs, lj_hs[0], lj_hs[1])
-                e_hs += e_lj
-                dUdr_hs += d_lj
             if abs(q_h * qs) > 0.0:
                 e_c, d_c = coulomb_energy_dudr(r_hs, q_h, qs)
                 e_hs += e_c

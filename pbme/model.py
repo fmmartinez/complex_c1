@@ -36,8 +36,6 @@ LJ_PARAMS: Dict[Tuple[str, str], Tuple[float, float]] = {
     ("A", "C2"): (3.5, 0.3974),
     ("B", "C1"): (3.5, 0.3974),
     ("B", "C2"): (3.5, 0.3974),
-    ("C1", "H"): (3.5, 0.3974),
-    ("C2", "H"): (3.5, 0.3974),
 }
 
 HBAR_MAPPING = 0.01594  # (kcal/mol)*fs
