@@ -83,28 +83,31 @@ def load_diabatic_tables(path: Path) -> Dict[str, object]:
     results = obj["results"]
     r_values = [float(item["R"]) for item in results]
 
-    h_splines: List[List[PchipInterpolator]] = [[None for _ in range(3)] for _ in range(3)]  # type: ignore
-    for i in range(3):
-        for j in range(3):
+    n_states = int(results[0].get("n_eigen", len(results[0]["hamiltonian_reduced_diabatic"])))
+
+    h_splines: List[List[PchipInterpolator]] = [[None for _ in range(n_states)] for _ in range(n_states)]  # type: ignore
+    for i in range(n_states):
+        for j in range(n_states):
             y = [float(item["hamiltonian_reduced_diabatic"][i][j]) for item in results]
             h_splines[i][j] = PchipInterpolator(r_values, y)
 
     eigenstates = [[[float(v) for v in state] for state in item["r_diagonalized_eigenstates_grid"]] for item in results]
     grid = [PROTON_GRID_MIN + PROTON_GRID_STEP * k for k in range(106)]
-    return {"r_values": r_values, "h_splines": h_splines, "eigenstates": eigenstates, "grid": grid}
+    return {"r_values": r_values, "h_splines": h_splines, "eigenstates": eigenstates, "grid": grid, "n_states": n_states}
 
 
 def interpolate_h_diabatic(di_table: Dict[str, object], r_ab: float) -> Tuple[List[List[float]], List[List[float]]]:
     h_splines = di_table["h_splines"]
-    h = [[0.0] * 3 for _ in range(3)]
-    dh = [[0.0] * 3 for _ in range(3)]
-    for i in range(3):
-        for j in range(3):
+    n_states = len(h_splines)
+    h = [[0.0] * n_states for _ in range(n_states)]
+    dh = [[0.0] * n_states for _ in range(n_states)]
+    for i in range(n_states):
+        for j in range(n_states):
             s_ij = h_splines[i][j]
             h[i][j] = s_ij.eval(r_ab)
             dh[i][j] = s_ij.deriv(r_ab)
-    for i in range(3):
-        for j in range(i + 1, 3):
+    for i in range(n_states):
+        for j in range(i + 1, n_states):
             sym = 0.5 * (h[i][j] + h[j][i])
             dsym = 0.5 * (dh[i][j] + dh[j][i])
             h[i][j] = h[j][i] = sym
@@ -125,7 +128,7 @@ def interpolate_eigenstates(di_table: Dict[str, object], r_ab: float) -> List[Li
         if r_values[i] <= r_ab <= r_values[i + 1]:
             t = (r_ab - r_values[i]) / (r_values[i + 1] - r_values[i])
             out = []
-            for state_idx in range(3):
+            for state_idx in range(len(states_all[i])):
                 st = []
                 for g in range(len(states_all[i][state_idx])):
                     st.append((1.0 - t) * states_all[i][state_idx][g] + t * states_all[i + 1][state_idx][g])
