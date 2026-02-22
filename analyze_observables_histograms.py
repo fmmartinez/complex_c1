@@ -211,11 +211,28 @@ def main() -> None:
     plt.savefig(out_joint, dpi=args.dpi)
     plt.close()
 
+    # 2D joint KDE (contours)
+    plt.figure(figsize=(7.2, 5.6))
+    levels = np.linspace(float(dens.min()), float(dens.max()), 12)
+    cf = plt.contourf(gx, gy, dens, levels=levels, cmap="viridis")
+    cl = plt.contour(gx, gy, dens, levels=levels, colors="white", linewidths=0.6, alpha=0.8)
+    plt.clabel(cl, inline=True, fmt="%.2e", fontsize=7)
+    plt.xlabel("COM distance")
+    plt.ylabel("Solvent polarization (dE_pol)")
+    plt.title(f"Joint KDE contours: COM distance vs solvent polarization\nN={pol_arr.size} samples from {len(files)} trajectories")
+    cbar = plt.colorbar(cf)
+    cbar.set_label("Probability density")
+    plt.tight_layout()
+    out_joint_contour = args.output_dir / "com_vs_polarization_joint_kde_contours.png"
+    plt.savefig(out_joint_contour, dpi=args.dpi)
+    plt.close()
+
     print(f"Discovered {len(files)} trajectory log files.")
     print(f"Aggregated {pol_arr.size} samples.")
     print(f"Wrote: {out_pol}")
     print(f"Wrote: {out_com}")
     print(f"Wrote: {out_joint}")
+    print(f"Wrote: {out_joint_contour}")
 
 
 if __name__ == "__main__":
